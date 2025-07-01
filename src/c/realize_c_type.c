@@ -945,8 +945,8 @@ static int do_realize_lazy_struct_lock_held(CTypeDescrObject *ct)
 static int do_realize_lazy_struct(CTypeDescrObject *ct)
 {
     int res = 0;
-    Py_BEGIN_CRITICAL_SECTION(ct);
+    LOCK_CTYPE_DESCR(ct);
     res = do_realize_lazy_struct_lock_held(ct);
-    Py_END_CRITICAL_SECTION();
+    UNLOCK_CTYPE_DESCR(ct);
     return res;
 }

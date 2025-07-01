@@ -315,6 +315,9 @@ typedef struct _ctypedescr {
     uint8_t ct_custom_field_pos;
     uint8_t ct_with_packed_change;
     uint8_t ct_with_var_array; /* with open-ended array, anywhere */
+#ifdef Py_GIL_DISABLED
+    PyMutex ct_mutex;
+#endif
     int ct_name_position;   /* index in ct_name of where to put a var name */
     char ct_name[1];        /* string, e.g. "int *" for pointers to ints */
 } CTypeDescrObject;
@@ -454,6 +457,14 @@ static PyMutex unique_cache_lock;
 #endif
 static PyObject *unique_cache;
 
+#ifdef Py_GIL_DISABLED
+#define LOCK_CTYPE_DESCR(ct) PyMutex_Lock(&(ct)->ct_mutex)
+#define UNLOCK_CTYPE_DESCR(ct) PyMutex_Unlock(&(ct)->ct_mutex)
+#else
+#define LOCK_CTYPE_DESCR(ct) ((void)0)
+#define UNLOCK_CTYPE_DESCR(ct) ((void)0)
+#endif
+
 /************************************************************/
 
 static CTypeDescrObject *
@@ -475,6 +486,9 @@ ctypedescr_new(int name_size)
     ct->ct_custom_field_pos = 0;
     ct->ct_with_packed_change = 0;
     ct->ct_with_var_array = 0;
+#ifdef Py_GIL_DISABLED
+    ct->ct_mutex = (PyMutex){0};
+#endif
     PyObject_GC_Track(ct);
     return ct;
 }
@@ -2671,13 +2685,13 @@ cdata_slice(CDataObject *cd, PySliceObject *slice)
     if (ct == NULL)
         return NULL;
     CTypeDescrObject *array_type = NULL;
-    Py_BEGIN_CRITICAL_SECTION(ct);
+    LOCK_CTYPE_DESCR(ct);
     array_type = (CTypeDescrObject *)ct->ct_stuff;
     if (ct->ct_stuff == NULL) {
         array_type = (CTypeDescrObject *)new_array_type(ct, -1);
         ct->ct_stuff = (PyObject *)array_type;
     }
-    Py_END_CRITICAL_SECTION();
+    UNLOCK_CTYPE_DESCR(ct);
 
     if (array_type == NULL) {
         return NULL;
@@ -5677,9 +5691,9 @@ static PyObject *b_complete_struct_or_union(PyObject *self, PyObject *args)
         return NULL;
 
     PyObject *res;
-    Py_BEGIN_CRITICAL_SECTION(ct);
+    LOCK_CTYPE_DESCR(ct);
     res = b_complete_struct_or_union_lock_held(ct, fields, totalsize, totalalignment, sflags, pack);
-    Py_END_CRITICAL_SECTION();
+    UNLOCK_CTYPE_DESCR(ct);
     return res;
 }
 
